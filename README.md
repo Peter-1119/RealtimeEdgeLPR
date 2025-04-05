@@ -12,7 +12,7 @@ A user-friendly **PyQt5 interface** is included, providing live video streaming 
 
 You can watch the demonstration video showcasing the real-time model detection within the PyQt interface and the historical record search functionality:
 
-![LPR Demo](https://github.com/Peter-1119/RealtimeEdgeLPR/blob/main/Assets/python%202025-04-05%2023-08-50.mp4)
+![LPR Demo](https://github.com/Peter-1119/RealtimeEdgeLPR/blob/main/Assets/LPR.mp4)
 
 ## Key Features
 
