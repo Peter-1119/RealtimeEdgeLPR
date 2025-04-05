@@ -8,6 +8,12 @@ To overcome the performance limitations of running standard PyTorch YOLO models 
 
 A user-friendly **PyQt5 interface** is included, providing live video streaming and a search functionality for recorded vehicles and their license plates. Captured car and motorcycle images are saved in the `Record` directory.
 
+### Real-time Recognition and Tracking Demo
+
+You can watch the demonstration video showcasing the real-time model detection within the PyQt interface and the historical record search functionality:
+
+![LPR Demo](https://github.com/Peter-1119/RealtimeEdgeLPR/blob/main/Assets/python%202025-04-05%2023-08-50.mp4)
+
 ## Key Features
 
 * **Optimized for Edge Devices:** Designed and optimized for low-power, resource-constrained devices like the Jetson Nano.
@@ -53,7 +59,7 @@ LPR_interface/
 
 1.  **Clone the Repository:**
     ```bash
-    git clone <your_repository_url>
+    git clone https://github.com/Peter-1119/RealtimeEdgeLPR.git
     cd LPR_interface
     ```
 
@@ -68,7 +74,6 @@ LPR_interface/
     pip install torch numpy
     pip install pycuda
     pip install pyqt5 opencv-python
-    # ... any other missing libraries
     ```
 
 ### Usage
