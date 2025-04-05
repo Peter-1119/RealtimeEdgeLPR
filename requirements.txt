@@ -1,0 +1,5 @@
+torch
+pycuda
+PyQt5
+opencv-python
+numpy
