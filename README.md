@@ -121,15 +121,3 @@ The integration of a **Kalman filter** not only enables vehicle tracking but can
 * **Cloud Integration:** Consider integrating with cloud services for data storage, analytics, or remote monitoring.
 * **Expand Vehicle Type Recognition:** Extend the object detection capabilities to classify different types of vehicles (e.g., cars, trucks, motorcycles) more accurately.
 * **Refined User Interface:** Add more advanced search filters, data visualization, and configuration options to the PyQt5 interface.
-
-## Contributing
-
-[Optional: Add information about how others can contribute to your project.]
-
-## License
-
-[Optional: Add license information for your project.]
-
----
-
-This `README.md` provides a comprehensive overview of your LPR project. Remember to replace `<your_repository_url>` with the actual URL of your repository and fill in any optional sections as needed. Good luck with your project!
