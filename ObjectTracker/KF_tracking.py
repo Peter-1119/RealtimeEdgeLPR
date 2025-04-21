@@ -12,102 +12,85 @@
 
 # Import python libraries
 import numpy as np
-#from kalman_filter import KalmanFilter
-#from common import dprint
 from scipy.optimize import linear_sum_assignment
-
 
 class KalmanFilter(object):
     """Kalman Filter class keeps track of the estimated state of
     the system and the variance or uncertainty of the estimate.
-    Predict and Correct methods implement the functionality
-    Reference: https://en.wikipedia.org/wiki/Kalman_filter
-    Attributes: None
+    This version tracks position (x, y) and velocity (vx, vy).
     """
 
     def __init__(self):
-        """Initialize variable used by Kalman Filter class
-        Args:
-            None
-        Return:
-            None
-        """
-        self.dt = 0.02  # delta time
+        """Initialize variables used by Kalman Filter class"""
+        self.dt = 0.02  # delta time (20 ms)
 
-        self.A = np.array([[1, 0], [0, 1]])  # matrix in observation equations
-        self.u = np.zeros((2, 1))  # previous state vector
+        # State transition matrix (4x4)
+        self.F = np.array([
+            [1, 0, self.dt, 0],
+            [0, 1, 0, self.dt],
+            [0, 0, 1, 0],
+            [0, 0, 0, 1]
+        ])
+        
+        self.B = np.array([
+            [0.5 * self.dt**2, 0],
+            [0, 0.5 * self.dt**2],
+            [self.dt, 0],
+            [0, self.dt],
+        ])
 
-        # (x,y) tracking object center
-        self.b = np.array([[0], [255]])  # vector of observations
+        # Observation matrix (2x4), we only observe position (x, y)
+        self.H = np.array([
+            [1, 0, 0, 0],
+            [0, 1, 0, 0]
+        ])
 
-        self.P = np.diag((3.0, 3.0))  # covariance matrix
-        self.F = np.array([[1.0, self.dt], [0.0, 1.0]])  # state transition mat
+        # Initial state [x, y, vx, vy]
+        self.x = np.array([[-1], [-1], [0], [0]])
+        self.u = np.zeros((2, 1))
+        self.z = np.array([[-1], [-1]])  # measurement vector (position)
 
-        self.Q = np.eye(self.u.shape[0])  # process noise matrix
-        self.R = np.eye(self.b.shape[0])  # observation noise matrix
-        self.lastResult = np.array([[0], [255]])
+        # Covariance matrix (4x4)
+        self.P = np.diag([3.0, 3.0, 3.0, 3.0])
+
+        # Process noise covariance
+        self.Q = np.diag([4.0, 4.0, 1.0, 1.0])
+
+        # Measurement noise covariance
+        self.R = np.diag([9.0, 9.0])
+
+        self.prev_x = np.array([[-1], [-1], [0], [0]])
+        self.prev_v = np.array([[0], [0]])
 
     def predict(self):
-        """Predict state vector u and variance of uncertainty P (covariance).
-            where,
-            u: previous state vector
-            P: previous covariance matrix
-            F: state transition matrix
-            Q: process noise matrix
-        Equations:
-            u'_{k|k-1} = Fu'_{k-1|k-1}
-            P_{k|k-1} = FP_{k-1|k-1} F.T + Q
-            where,
-                F.T is F transpose
+        """Predict the state and covariance matrix."""
+        self.prev_x = self.x
+        
+        self.x = np.round(self.F @ self.x + self.B @ self.u, 2)
+        self.P = self.F @ self.P @ self.F.T + self.Q
+        return self.x.T[0, :2]
+
+    def correct(self, z, flag):
+        """Update the Kalman Filter with new observation z.
         Args:
-            None
-        Return:
-            vector of predicted state estimate
+            z: measurement vector [x, y]
+            flag: True if using actual detection, False if only prediction
         """
-        # Predicted state estimate
-        self.u = np.round(np.dot(self.F, self.u), 1)
-        # Predicted estimate covariance
-        self.P = np.dot(self.F, np.dot(self.P, self.F.T)) + self.Q
-        self.lastResult = self.u  # same last predicted result
-        return self.u
+        
+        self.z = z if flag else self.x[:2]
 
-    def correct(self, b, flag):
-        """Correct or update state vector u and variance of uncertainty P (covariance).
-        where,
-        u: predicted state vector u
-        A: matrix in observation equations
-        b: vector of observations
-        P: predicted covariance matrix
-        Q: process noise matrix
-        R: observation noise matrix
-        Equations:
-            C = AP_{k|k-1} A.T + R
-            K_{k} = P_{k|k-1} A.T(C.Inv)
-            u'_{k|k} = u'_{k|k-1} + K_{k}(b_{k} - Au'_{k|k-1})
-            P_{k|k} = P_{k|k-1} - K_{k}(CK.T)
-            where,
-                A.T is A transpose
-                C.Inv is C inverse
-        Args:
-            b: vector of observations
-            flag: if "true" prediction result will be updated else detection
-        Return:
-            predicted state vector u
-        """
+        S = self.H @ self.P @ self.H.T + self.R  # Residual covariance
+        K = self.P @ self.H.T @ np.linalg.inv(S)  # Kalman gain
 
-        if not flag:  # update using prediction
-            self.b = self.lastResult
-        else:  # update using detection
-            self.b = b
-        C = np.dot(self.A, np.dot(self.P, self.A.T)) + self.R
-        K = np.dot(self.P, np.dot(self.A.T, np.linalg.inv(C)))
+        y = self.z - self.H @ self.x  # Innovation
+        self.x = np.round(self.x + K @ y, 2)  # Updated state estimate
+        self.P = self.P - K @ S @ K.T  # Updated covariance estimate
 
-        self.u = np.round(self.u + np.dot(K, (self.b - np.dot(self.A, self.u))), 1)
-        self.P = self.P - np.dot(K, np.dot(C, K.T))
-        self.lastResult = self.u
-        return self.u
+        curr_v = (self.x[:2] - self.prev_x[:2]) / self.dt
+        self.u = (curr_v - self.prev_v) / self.dt
+        self.prev_v = curr_v
 
-
+        return self.x.T[0, :2]
 
 
 class Track(object):
@@ -182,6 +165,7 @@ class Tracker(object):
         if (len(self.tracks) == 0):
             for i in range(len(detections)):
                 track = Track(detections[i], self.trackIdCount, boxes[i, :4], boxes[i, 4])
+                track.KF.x = np.array([[detections[i][0]], [detections[i][1]], [0], [0]])
                 self.trackIdCount += 1
                 self.tracks.append(track)
 
@@ -192,13 +176,12 @@ class Tracker(object):
         cost = np.zeros(shape=(N, M))   # Cost matrix
         for i in range(len(self.tracks)):
             for j in range(len(detections)):
-                try:
-                    diff = self.tracks[i].prediction - detections[j]
-                    distance = np.sqrt(diff[0][0]*diff[0][0] + diff[1][0]*diff[1][0])
-                    cost[i][j] = distance
-                except:
-                    pass
-                    
+                diff = self.tracks[i].prediction - detections[j]
+                # print(f"after track[{i}].prediction: {self.tracks[i].prediction}, detections[{j}]: {detections[j]}, diff: {diff}")
+                distance = np.sqrt(diff[0] * diff[0] + diff[1] * diff[1])
+                cost[i][j] = distance
+        # print("\n")
+        
         # Let's average the squared ERROR
         cost = (0.5) * cost
         # Using Hungarian Algorithm assign the correct detected measurements
@@ -245,22 +228,26 @@ class Tracker(object):
         if(len(un_assigned_detects) != 0):
             for i in un_assigned_detects:
                 track = Track(detections[i], self.trackIdCount, boxes[i, :4], boxes[i, 4])
+                track.KF.x = np.array([[detections[i][0]], [detections[i][1]], [0], [0]])
                 self.trackIdCount += 1
                 self.tracks.append(track)
 
         # Update KalmanFilter state, lastResults and tracks trace
         for i in range(len(assignment)):
             self.tracks[i].KF.predict()
+            # print(f"predict state index {i} x: {self.tracks[i].KF.prev_x.T[0]} -> {self.tracks[i].KF.x.T[0]}, v: {self.tracks[i].KF.u.T[0]}")
 
             if(assignment[i] != -1):
                 self.tracks[i].skipped_frames = 0
-                self.tracks[i].prediction = self.tracks[i].KF.correct(detections[assignment[i]], 1)
+                self.tracks[i].prediction = self.tracks[i].KF.correct(detections[assignment[i]][:, None], 1)
             else:
-                self.tracks[i].prediction = self.tracks[i].KF.correct(np.array([[0], [0]]), 0)
+                self.tracks[i].prediction = self.tracks[i].KF.correct(np.zeros((2, 1)), 0)
 
             if(len(self.tracks[i].trace) > self.max_trace_length):
                 for j in range(len(self.tracks[i].trace) - self.max_trace_length):
                     del self.tracks[i].trace[j]
 
+            # print(f"correct state index {i} x: {self.tracks[i].KF.x.T[0]}")
             self.tracks[i].trace.append(self.tracks[i].prediction)
-            self.tracks[i].KF.lastResult = self.tracks[i].prediction
+        
+        # print("\n")

@@ -11,6 +11,7 @@ from PyQt5 import QtCore
 from ObjectTracker.KF_tracking import Tracker
 from ObjectTracker.TrackerDetection import *
 
+# Check target object in ROI
 def object_in_ROI(image_shape, center, ratio = 0.075):
     h, w, c = image_shape
     h1, h2 = h * ratio, h * (1 - ratio)
@@ -20,6 +21,7 @@ def object_in_ROI(image_shape, center, ratio = 0.075):
         return True
     return False
 
+# Bind vehicle and attachments (like: helmet or license plate)
 def bind_objects_(VA_boxes, attach_boxes, binding_type = "plate"):
     attach_binding = {}
     for VA_index, VA_box in enumerate(VA_boxes):
@@ -37,6 +39,7 @@ def bind_objects_(VA_boxes, attach_boxes, binding_type = "plate"):
     
     return attach_binding
 
+# Bind attachments and vehicle
 def bind_objects(VA_boxes, attach_boxes, binding_type = "plate"):
     attach_binding = {}
     for attach_index, (x1, y1, x2, y2, category) in enumerate(attach_boxes):
@@ -54,12 +57,14 @@ def bind_objects(VA_boxes, attach_boxes, binding_type = "plate"):
     
     return attach_binding
     
+# Count the occurrences of recognized license plate texts.
 def label_count(plate_info, label):
     if plate_info.get(label) == None:
         plate_info[label] = 1
     else:
         plate_info[label] += 1
 
+# Select the most frequently recognized license plate text.
 def choose_label(plate_info):
     label, labelCount = None, 0
     for plate, count in plate_info.items():
@@ -69,6 +74,7 @@ def choose_label(plate_info):
     
     return label
 
+# Determine whether a helmet was detected in the majority of recent frames.
 def check_helmet(helmet_info):
     if (sum(helmet_info) / len(helmet_info)) >= 0.5:
         return True
@@ -91,7 +97,7 @@ class LPR(QtCore.QThread):
         self.classNames = self.read_classes(classes_txt)
         self.VA_index = VA_index
         self.attach_index = attach_index
-        self.VA_tracker = Tracker(20, 3, 15, 0)
+        self.VA_tracker = Tracker(40, 3, 15, 0)
 
         # Check folder for storage photo
         os.makedirs("Record/Vehicles", exist_ok = True)
@@ -100,13 +106,15 @@ class LPR(QtCore.QThread):
         self.raise_signal = None
         self.capture_photos = []
         self.CarIDInfo = {}
-        
+    
+    # Read class names from a YOLO model class file.
     def read_classes(self, filename):
         with open(filename, 'r') as f:
             classNames = [c[:-1] for c in f.readlines()]
             
         return classNames
     
+    # Draw rectangle on detected objects
     def draw_box(self, image, bbox):
         for box in bbox:
             VA_id, VA_alive_Frame, x1, y1, x2, y2, category = box
@@ -115,15 +123,19 @@ class LPR(QtCore.QThread):
             if VA_alive_Frame > 5:
                 plot_one_box([x1, y1, x2, y2], image, label = f"{int(VA_id)}_{label}")
     
+    # Store detect vehicle and features and process
     def store_memory(self, image, VA_boxes, plate_boxes, plate_labels, helmet_relation, plate_relation):
         now = time.strftime("%Y%m%d-%H%M%S", time.localtime())
         
         image_shape = image.shape
+        
+        # Correct vehicle bounding box
         VA_boxes[:, 2] = np.where(VA_boxes[:, 2] < 0, 0, VA_boxes[:, 2])
         VA_boxes[:, 3] = np.where(VA_boxes[:, 3] < 0, 0, VA_boxes[:, 3])
         VA_boxes[:, 4] = np.where(VA_boxes[:, 4] >= image_shape[1], image_shape[1] - 1, VA_boxes[:, 4])
         VA_boxes[:, 5] = np.where(VA_boxes[:, 5] >= image_shape[0], image_shape[0] - 1, VA_boxes[:, 5])
         
+        # Correct license plate bounding box
         plate_boxes[:, 0] = np.where(plate_boxes[:, 0] < 0, 0, plate_boxes[:, 0])
         plate_boxes[:, 1] = np.where(plate_boxes[:, 1] < 0, 0, plate_boxes[:, 1])
         plate_boxes[:, 2] = np.where(plate_boxes[:, 2] >= image_shape[1], image_shape[1] - 1, plate_boxes[:, 2])
@@ -162,6 +174,7 @@ class LPR(QtCore.QThread):
                     self.CarIDInfo[VA_id]['capture_size'] = area
                     self.CarIDInfo[VA_id]['capture_time'] = now
         
+    # Capture and save photos of vehicles for later searching
     def capture_photo(self, delete_ids):
         self.capture_photos.clear()
         for delete_id in delete_ids:
@@ -187,42 +200,55 @@ class LPR(QtCore.QThread):
                 del self.CarIDInfo[delete_id]
     
     def detect_and_recognize(self, image):
+        # Yolo model detect objects
         result = self.yoloEngine.predict(image)
         
         image_shape = image.shape
         
+        # Calculate and track vehicle features
         VA_class = [c in self.VA_index for c in result[:, 4]]
         VA_centers = calc_center_without_label(result[VA_class])
         VA_boxes, VA_delete_ids = get_tracking_object(self.VA_tracker, VA_centers, result[VA_class])
         
+        # Select attachment from detected objects
         helmet_boxes = result[result[:, 4] == self.attach_index[0]]
         plate_boxes = result[result[:, 4] == self.attach_index[1]]
         
+        # Bind attachment and vehicle
         helmet_relation = bind_objects(VA_boxes, helmet_boxes, binding_type = "helmet")
         plate_relation = bind_objects(VA_boxes, plate_boxes, "plate")
         plate_labels, _ = self.textRecognizeEngine.detect_batch(image, plate_boxes)
         
+        # Store and process vehicle feature, and then capture photo for disappear object
         if VA_boxes.shape[0] != 0:
             self.store_memory(image.copy(), VA_boxes, plate_boxes, plate_labels, helmet_relation, plate_relation)
         self.capture_photo(VA_delete_ids)
         
+        # Draw rectangle for detected objects
         self.draw_box(image, VA_boxes)
         
+        # Return frame
         return image
     
     def run(self):
         cap1 = cv2.VideoCapture('videos/test.mkv')
+        index = 0
         
         while cap1.isOpened():
-            start = time.time()
+            # start = time.time()
+            
+            # Read frame from cap instance
             ret0, im0 = cap1.read()  # origin image
             if not ret0: break
             
+            # Process frame
             image = self.detect_and_recognize(im0)
             
+            # Send capture and current frame to interface
             if self.raise_signal != None:
                 self.raise_signal.emit({"video": image, "captures": self.capture_photos})
             
+            # Show processed frame
             # cv2.imshow('image_win', image)
             
             # key = cv2.waitKey(1)
@@ -231,7 +257,8 @@ class LPR(QtCore.QThread):
             #     break
 
             # print('##### spend time: {}#####'.format(time.time() - start))
-            
+        
+        cv2.destroyAllWindows()
         cap1.release()
         
 if __name__ == '__main__':

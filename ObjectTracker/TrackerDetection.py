@@ -6,7 +6,7 @@ def calc_center_with_label(out_boxes, label_index):
     targetBoxes = out_boxes[out_boxes[:, 4] == label_index]
     centers = []
     for x1, y1, x2, y2, category in targetBoxes:
-        center = [(x1 + x2) / 20, (y1 + y2) / 20]
+        center = [(x1 + x2) / 2, (y1 + y2) / 2]
         centers.append(center)
         
     return np.array(centers), targetBoxes
@@ -14,7 +14,7 @@ def calc_center_with_label(out_boxes, label_index):
 def calc_center_without_label(out_boxes):
     centers = []
     for x1, y1, x2, y2, category in out_boxes:
-        center = [(x1 + x2) / 20, (y1 + y2) / 20]
+        center = [(x1 + x2) / 2, (y1 + y2) / 2]
         centers.append(center)
         
     return np.array(centers)
